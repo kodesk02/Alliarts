@@ -4,6 +4,14 @@ import { notFound } from "next/navigation";
 import { rooms, frames } from "@/app/data/room";
 import Image from "next/image";
 import { Icon } from "@iconify/react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -19,9 +27,11 @@ export default function RoomPage({ params }: Props) {
   >(null);
   const [hasSelectedFrame, setHasSelectedFrame] = React.useState(false);
   const [uploadedImage, setUploadedImage] = React.useState<string | null>(null);
+  const [frameWidth, setFrameWidth] = React.useState("256");
+  const [frameHeight, setFrameHeight] = React.useState("256");
 
   React.useEffect(() => {
-    setFrameOpen(true);
+    setFrameOpen(false);
   }, []);
 
   const handleFrameClick = (frame: (typeof frames)[0]) => {
@@ -49,6 +59,17 @@ export default function RoomPage({ params }: Props) {
     const input = document.getElementById("fileInput");
     input?.click();
   };
+
+  // Size options
+  const sizeOptions = [
+    { value: "128", label: "128px" },
+    { value: "192", label: "192px" },
+    { value: "256", label: "256px" },
+    { value: "320", label: "320px" },
+    { value: "384", label: "384px" },
+    { value: "448", label: "448px" },
+    { value: "512", label: "512px" },
+  ];
 
   return (
     <main
@@ -84,16 +105,18 @@ export default function RoomPage({ params }: Props) {
           style={{
             top: room.framePosition.top,
             left: room.framePosition.left,
+            width: `${frameWidth}px`,
+            height: `${frameHeight}px`,
           }}
-          className="absolute w-64 h-64 transform -translate-x-1/2 -translate-y-1/2 cursor-pointer"
+          className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer"
         >
           <div className="relative w-full h-full">
             {uploadedImage ? (
               <Image
                 src={uploadedImage}
                 alt="Uploaded Image"
-                width={256}
-                height={256}
+                width={parseInt(frameWidth)}
+                height={parseInt(frameHeight)}
                 className="absolute inset-0 w-full h-full object-cover"
               />
             ) : (
@@ -103,8 +126,8 @@ export default function RoomPage({ params }: Props) {
             <Image
               src={selectedFrame.image}
               alt={selectedFrame.name}
-              width={256}
-              height={256}
+              width={parseInt(frameWidth)}
+              height={parseInt(frameHeight)}
               className="absolute inset-0 w-full h-full object-fill pointer-events-none"
             />
           </div>
@@ -112,33 +135,118 @@ export default function RoomPage({ params }: Props) {
       )}
 
       {frameOpen && (
-        <div className="absolute bottom-0 left-0 w-full">
-          <div className="flex justify-end text-(--brown)">
-            <button
-              onClick={() => setFrameOpen(false)}
-              className="text-white font-bold"
-            >
-              <Icon icon="iconamoon:close-thin" width="40" height="40" />
-            </button>
-          </div>
-          <div className="bg-white/10 background-blur-3xl py-3 shadow-lg rounded-xl">
-            <div className="flex justify-center px-4">
-              <div className="flex overflow-x-auto px-4 pb-2 mt-2 gap-4">
-                {frames.map((frame) => (
-                  <div
-                    key={frame.id}
-                    className="shrink-0 w-20 h-28 rounded-lg overflow-hidden cursor-pointer"
-                    onClick={() => handleFrameClick(frame)}
-                  >
-                    <Image
-                      src={frame.image}
-                      alt={frame.name}
-                      width={100}
-                      height={100}
-                      className="object-cover"
-                    />
+        <div className="fixed inset-0 z-50">
+          {/* Overlay */}
+          <div
+            className="absolute inset-0 bg-black/10 backdrop-blur-xs"
+            onClick={() => setFrameOpen(false)}
+          />
+
+          {/* Modal container */}
+          <div className="relative h-full w-full flex flex-col bg-black/30">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4">
+              <h2 className="text-white text-lg font-medium">Choose a frame</h2>
+              <button
+                onClick={() => setFrameOpen(false)}
+                className="text-white"
+              >
+                <Icon icon="iconamoon:close-thin" width="36" height="36" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex flex-1 overflow-hidden">
+              <div className="w-1/6 overflow-y-auto">
+                <div className="px-6 pb-10">
+                  <div className="flex flex-col gap-6">
+                    {frames.map((frame) => (
+                      <div
+                        key={frame.id}
+                        onClick={() => handleFrameClick(frame)}
+                        className={`cursor-pointer w-20 overflow-hidden bg-white/10 hover:bg-white/20 transition ${
+                          selectedFrame?.id === frame.id ? "ring-2 ring-white" : ""
+                        }`}
+                      >
+                        <Image
+                          src={frame.image}
+                          alt={frame.name}
+                          width={300}
+                          height={400}
+                          className="object-cover w-full h-full"
+                        />
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+              </div>
+
+              <div className="w-5/6 flex flex-col items-center justify-center gap-8 p-8">
+                {/* Size Controls */}
+                <div className="flex gap-6 items-start">
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="width" className="text-white text-sm">
+                      Width
+                    </Label>
+                    <Select value={frameWidth} onValueChange={setFrameWidth}>
+                      <SelectTrigger id="width" className="w-32 bg-white/10 text-white border-white/20">
+                        <SelectValue placeholder="Select width" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sizeOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="height" className="text-white text-sm">
+                      Height
+                    </Label>
+                    <Select value={frameHeight} onValueChange={setFrameHeight}>
+                      <SelectTrigger id="height" className="w-32 bg-white/10 text-white border-white/20">
+                        <SelectValue placeholder="Select height" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sizeOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Preview Frame */}
+                {selectedFrame && (
+                  <div className="relative" style={{ width: `${frameWidth}px`, height: `${frameHeight}px` }}>
+                    <div className="relative w-full h-full">
+                      {uploadedImage ? (
+                        <Image
+                          src={uploadedImage}
+                          alt="Uploaded Image"
+                          width={parseInt(frameWidth)}
+                          height={parseInt(frameHeight)}
+                          className="absolute inset-0 w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 w-full h-full bg-white/10" />
+                      )}
+
+                      <Image
+                        src={selectedFrame.image}
+                        alt={selectedFrame.name}
+                        width={parseInt(frameWidth)}
+                        height={parseInt(frameHeight)}
+                        className="absolute inset-0 w-full h-full object-fill pointer-events-none"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

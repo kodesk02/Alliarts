@@ -36,4 +36,19 @@ export const frames = [
         name: 'Vintage Frame',
         image: '/frames/frame3.png'
     },
+      {
+        id: 'frame4',
+        name: 'Classic Frame',
+        image: '/frames/frame1.png'
+    },
+    {
+        id: 'frame5',
+        name: 'Modern Frame',
+        image: '/frames/frame2.png'
+    },
+    {
+        id: 'frame6',
+        name: 'Vintage Frame',
+        image: '/frames/frame3.png'
+    },
 ]
