@@ -36,11 +36,7 @@ export default function RoomPage({ params }: Props) {
 
   const handleFrameClick = (frame: (typeof frames)[0]) => {
     setSelectedFrame(frame);
-
-    if (!hasSelectedFrame) {
-      setFrameOpen(false);
-      setHasSelectedFrame(true);
-    }
+    setHasSelectedFrame(true);
   };
 
   if (!room) {
@@ -117,7 +113,7 @@ export default function RoomPage({ params }: Props) {
                 alt="Uploaded Image"
                 width={parseInt(frameWidth)}
                 height={parseInt(frameHeight)}
-                className="absolute inset-0 w-full h-full object-cover"
+                className="absolute inset-0 w-full h-full object-contain"
               />
             ) : (
               <div className="absolute inset-0 w-full h-full bg-black/20" />
@@ -138,7 +134,7 @@ export default function RoomPage({ params }: Props) {
         <div className="fixed inset-0 z-50">
           {/* Overlay */}
           <div
-            className="absolute inset-0 bg-black/10 backdrop-blur-xs"
+            className="absolute inset-0 bg-black/50 backdrop-blur-md"
             onClick={() => setFrameOpen(false)}
           />
 
@@ -183,12 +179,12 @@ export default function RoomPage({ params }: Props) {
 
               <div className="w-5/6 flex flex-col items-center justify-center gap-8 p-8">
                 {/* Size Controls */}
-                <div className="flex gap-6 items-start">
+                <div className="flex gap-6 items-end">
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="width" className="text-white text-sm">
                       Width
                     </Label>
-                    <Select value={frameWidth} onValueChange={setFrameWidth}>
+                    <Select disabled={!selectedFrame} value={frameWidth} onValueChange={setFrameWidth}>
                       <SelectTrigger id="width" className="w-32 bg-white/10 text-white border-white/20">
                         <SelectValue placeholder="Select width" />
                       </SelectTrigger>
@@ -206,7 +202,7 @@ export default function RoomPage({ params }: Props) {
                     <Label htmlFor="height" className="text-white text-sm">
                       Height
                     </Label>
-                    <Select value={frameHeight} onValueChange={setFrameHeight}>
+                    <Select disabled={!selectedFrame} value={frameHeight} onValueChange={setFrameHeight}>
                       <SelectTrigger id="height" className="w-32 bg-white/10 text-white border-white/20">
                         <SelectValue placeholder="Select height" />
                       </SelectTrigger>
@@ -231,7 +227,7 @@ export default function RoomPage({ params }: Props) {
                           alt="Uploaded Image"
                           width={parseInt(frameWidth)}
                           height={parseInt(frameHeight)}
-                          className="absolute inset-0 w-full h-full object-cover"
+                          className="absolute inset-0 w-full h-full object-contain"
                         />
                       ) : (
                         <div className="absolute inset-0 w-full h-full bg-white/10" />
