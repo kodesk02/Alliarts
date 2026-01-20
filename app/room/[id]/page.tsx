@@ -29,10 +29,23 @@ export default function RoomPage({ params }: Props) {
   const [uploadedImage, setUploadedImage] = React.useState<string | null>(null);
   const [frameWidth, setFrameWidth] = React.useState("256");
   const [frameHeight, setFrameHeight] = React.useState("256");
+  
+  // New state for draggable frame
+  const [framePosition, setFramePosition] = React.useState({ 
+    top: "30%", 
+    left: "40%" 
+  });
+  const [isDragging, setIsDragging] = React.useState(false);
+  const [dragStart, setDragStart] = React.useState({ x: 0, y: 0 });
+  const frameRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     setFrameOpen(false);
-  }, []);
+    // Initialize frame position from room data
+    if (room?.framePosition) {
+      setFramePosition(room.framePosition);
+    }
+  }, [room]);
 
   const handleFrameClick = (frame: (typeof frames)[0]) => {
     setSelectedFrame(frame);
@@ -55,6 +68,75 @@ export default function RoomPage({ params }: Props) {
     const input = document.getElementById("fileInput");
     input?.click();
   };
+
+  // Dragging functionality
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Prevent dragging when modal is open
+    if (frameOpen) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+    
+    const rect = frameRef.current?.getBoundingClientRect();
+    if (rect) {
+      setDragStart({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      });
+    }
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isDragging || !frameRef.current) return;
+
+    const container = frameRef.current.parentElement;
+    if (!container) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const frameWidthPx = parseInt(frameWidth);
+    const frameHeightPx = parseInt(frameHeight);
+
+    // Calculate new position
+    let newLeft = e.clientX - containerRect.left - dragStart.x;
+    let newTop = e.clientY - containerRect.top - dragStart.y;
+
+    // Define boundaries (adjust these percentages to limit the movable area)
+    const minLeft = 0;
+    const maxLeft = containerRect.width - frameWidthPx;
+    const minTop = 0;
+    const maxTop = containerRect.height - frameHeightPx;
+
+    // Apply boundaries
+    newLeft = Math.max(minLeft, Math.min(newLeft, maxLeft));
+    newTop = Math.max(minTop, Math.min(newTop, maxTop));
+
+    // Convert to percentage for responsive positioning
+    const leftPercent = (newLeft / containerRect.width) * 100;
+    const topPercent = (newTop / containerRect.height) * 100;
+
+    setFramePosition({
+      left: `${leftPercent}%`,
+      top: `${topPercent}%`,
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // Add event listeners for mouse move and up
+  React.useEffect(() => {
+    if (isDragging) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+
+      return () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
+    }
+  }, [isDragging, dragStart, frameWidth, frameHeight]);
 
   // Size options
   const sizeOptions = [
@@ -95,16 +177,25 @@ export default function RoomPage({ params }: Props) {
         </button>
       </div>
 
-      {selectedFrame && room.framePosition && (
+      {selectedFrame && (
         <div
-          onClick={() => setFrameOpen(true)}
+          ref={frameRef}
+          onMouseDown={handleMouseDown}
+          onClick={(e) => {
+            // Only open modal if not dragging
+            if (!isDragging) {
+              e.stopPropagation();
+              setFrameOpen(true);
+            }
+          }}
           style={{
-            top: room.framePosition.top,
-            left: room.framePosition.left,
+            top: framePosition.top,
+            left: framePosition.left,
             width: `${frameWidth}px`,
             height: `${frameHeight}px`,
+            cursor: isDragging ? 'grabbing' : 'grab',
           }}
-          className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer"
+          className="absolute transform -translate-x-1/2 -translate-y-1/2 select-none"
         >
           <div className="relative w-full h-full">
             {uploadedImage ? (
@@ -113,7 +204,7 @@ export default function RoomPage({ params }: Props) {
                 alt="Uploaded Image"
                 width={parseInt(frameWidth)}
                 height={parseInt(frameHeight)}
-                className="absolute inset-0 w-full h-full object-contain"
+                className="absolute inset-0 w-full h-full object-contain pointer-events-none"
               />
             ) : (
               <div className="absolute inset-0 w-full h-full bg-black/20" />
