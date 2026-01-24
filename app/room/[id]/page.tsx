@@ -69,9 +69,8 @@ export default function RoomPage({ params }: Props) {
     input?.click();
   };
 
-  // Dragging functionality
+  // Mouse dragging functionality
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Prevent dragging when modal is open
     if (frameOpen) return;
     
     e.preventDefault();
@@ -87,6 +86,7 @@ export default function RoomPage({ params }: Props) {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleMouseMove = (e: MouseEvent) => {
     if (!isDragging || !frameRef.current) return;
 
@@ -97,21 +97,17 @@ export default function RoomPage({ params }: Props) {
     const frameWidthPx = parseInt(frameWidth);
     const frameHeightPx = parseInt(frameHeight);
 
-    // Calculate new position
     let newLeft = e.clientX - containerRect.left - dragStart.x;
     let newTop = e.clientY - containerRect.top - dragStart.y;
 
-    // Define boundaries (adjust these percentages to limit the movable area)
     const minLeft = 0;
     const maxLeft = containerRect.width - frameWidthPx;
     const minTop = 0;
     const maxTop = containerRect.height - frameHeightPx;
 
-    // Apply boundaries
     newLeft = Math.max(minLeft, Math.min(newLeft, maxLeft));
     newTop = Math.max(minTop, Math.min(newTop, maxTop));
 
-    // Convert to percentage for responsive positioning
     const leftPercent = (newLeft / containerRect.width) * 100;
     const topPercent = (newTop / containerRect.height) * 100;
 
@@ -125,18 +121,78 @@ export default function RoomPage({ params }: Props) {
     setIsDragging(false);
   };
 
-  // Add event listeners for mouse move and up
+  // Touch dragging functionality
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (frameOpen) return;
+    
+    e.stopPropagation();
+    setIsDragging(true);
+    
+    const touch = e.touches[0];
+    const rect = frameRef.current?.getBoundingClientRect();
+    if (rect) {
+      setDragStart({
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top,
+      });
+    }
+  };
+
+  const handleTouchMove = React.useCallback((e: TouchEvent) => {
+    if (!isDragging || !frameRef.current) return;
+
+    e.preventDefault();
+    const container = frameRef.current.parentElement;
+    if (!container) return;
+
+    const touch = e.touches[0];
+    const containerRect = container.getBoundingClientRect();
+    const frameWidthPx = parseInt(frameWidth);
+    const frameHeightPx = parseInt(frameHeight);
+
+    let newLeft = touch.clientX - containerRect.left - dragStart.x;
+    let newTop = touch.clientY - containerRect.top - dragStart.y;
+
+    const minLeft = 0;
+    const maxLeft = containerRect.width - frameWidthPx;
+    const minTop = 0;
+    const maxTop = containerRect.height - frameHeightPx;
+
+    newLeft = Math.max(minLeft, Math.min(newLeft, maxLeft));
+    newTop = Math.max(minTop, Math.min(newTop, maxTop));
+
+    const leftPercent = (newLeft / containerRect.width) * 100;
+    const topPercent = (newTop / containerRect.height) * 100;
+
+    setFramePosition({
+      left: `${leftPercent}%`,
+      top: `${topPercent}%`,
+    });
+  }, [isDragging, dragStart, frameWidth, frameHeight]);
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+  };
+
+  // Event listeners
   React.useEffect(() => {
     if (isDragging) {
-      window.addEventListener("mousemove", handleMouseMove);
+      const mouseMoveHandler = (e: MouseEvent) => handleMouseMove(e);
+      const touchMoveHandler = (e: TouchEvent) => handleTouchMove(e);
+      
+      window.addEventListener("mousemove", mouseMoveHandler);
       window.addEventListener("mouseup", handleMouseUp);
+      window.addEventListener("touchmove", touchMoveHandler, { passive: false });
+      window.addEventListener("touchend", handleTouchEnd);
 
       return () => {
-        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mousemove", mouseMoveHandler);
         window.removeEventListener("mouseup", handleMouseUp);
+        window.removeEventListener("touchmove", touchMoveHandler);
+        window.removeEventListener("touchend", handleTouchEnd);
       };
     }
-  }, [isDragging, dragStart, frameWidth, frameHeight]);
+  }, [isDragging, handleMouseMove, handleTouchMove]);
 
   // Size options
   const sizeOptions = [
@@ -181,8 +237,8 @@ export default function RoomPage({ params }: Props) {
         <div
           ref={frameRef}
           onMouseDown={handleMouseDown}
+          onTouchStart={handleTouchStart}
           onClick={(e) => {
-            // Only open modal if not dragging
             if (!isDragging) {
               e.stopPropagation();
               setFrameOpen(true);
@@ -194,6 +250,7 @@ export default function RoomPage({ params }: Props) {
             width: `${frameWidth}px`,
             height: `${frameHeight}px`,
             cursor: isDragging ? 'grabbing' : 'grab',
+            touchAction: 'none',
           }}
           className="absolute transform -translate-x-1/2 -translate-y-1/2 select-none"
         >
@@ -232,26 +289,27 @@ export default function RoomPage({ params }: Props) {
           {/* Modal container */}
           <div className="relative h-full w-full flex flex-col bg-black/30">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4">
-              <h2 className="text-white text-lg font-medium">Choose a frame</h2>
+            <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4">
+              <h2 className="text-white text-base md:text-lg font-medium">Choose a frame</h2>
               <button
                 onClick={() => setFrameOpen(false)}
                 className="text-white"
               >
-                <Icon icon="iconamoon:close-thin" width="36" height="36" />
+                <Icon icon="iconamoon:close-thin" width="28" height="28" className="md:w-9 md:h-9" />
               </button>
             </div>
 
             {/* Content */}
-            <div className="flex flex-1 overflow-hidden">
-              <div className="w-1/6 overflow-y-auto">
-                <div className="px-6 pb-10">
-                  <div className="flex flex-col gap-6">
+            <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
+              {/* Frame selection sidebar */}
+              <div className="w-full md:w-1/6 overflow-y-auto overflow-x-auto md:overflow-x-hidden">
+                <div className="px-4 md:px-6 pb-4 md:pb-10">
+                  <div className="flex flex-row md:flex-col gap-3 md:gap-6">
                     {frames.map((frame) => (
                       <div
                         key={frame.id}
                         onClick={() => handleFrameClick(frame)}
-                        className={`cursor-pointer w-20 overflow-hidden bg-white/10 hover:bg-white/20 transition ${
+                        className={`cursor-pointer w-16 md:w-20 flex-shrink-0 overflow-hidden bg-white/10 hover:bg-white/20 transition ${
                           selectedFrame?.id === frame.id ? "ring-2 ring-white" : ""
                         }`}
                       >
@@ -268,15 +326,16 @@ export default function RoomPage({ params }: Props) {
                 </div>
               </div>
 
-              <div className="w-5/6 flex flex-col items-center justify-center gap-8 p-8">
+              {/* Preview area */}
+              <div className="w-full md:w-5/6 flex flex-col items-center justify-center gap-4 md:gap-8 p-4 md:p-8">
                 {/* Size Controls */}
-                <div className="flex gap-6 items-end">
+                <div className="flex gap-3 md:gap-6 items-end">
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="width" className="text-white text-sm">
+                    <Label htmlFor="width" className="text-white text-xs md:text-sm">
                       Width
                     </Label>
                     <Select disabled={!selectedFrame} value={frameWidth} onValueChange={setFrameWidth}>
-                      <SelectTrigger id="width" className="w-32 bg-white/10 text-white border-white/20">
+                      <SelectTrigger id="width" className="w-24 md:w-32 bg-white/10 text-white border-white/20 text-xs md:text-sm">
                         <SelectValue placeholder="Select width" />
                       </SelectTrigger>
                       <SelectContent>
@@ -290,11 +349,11 @@ export default function RoomPage({ params }: Props) {
                   </div>
 
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="height" className="text-white text-sm">
+                    <Label htmlFor="height" className="text-white text-xs md:text-sm">
                       Height
                     </Label>
                     <Select disabled={!selectedFrame} value={frameHeight} onValueChange={setFrameHeight}>
-                      <SelectTrigger id="height" className="w-32 bg-white/10 text-white border-white/20">
+                      <SelectTrigger id="height" className="w-24 md:w-32 bg-white/10 text-white border-white/20 text-xs md:text-sm">
                         <SelectValue placeholder="Select height" />
                       </SelectTrigger>
                       <SelectContent>
@@ -310,7 +369,13 @@ export default function RoomPage({ params }: Props) {
 
                 {/* Preview Frame */}
                 {selectedFrame && (
-                  <div className="relative" style={{ width: `${frameWidth}px`, height: `${frameHeight}px` }}>
+                  <div 
+                    className="relative max-w-full overflow-auto"
+                    style={{ 
+                      width: `min(${frameWidth}px, 100%)`, 
+                      height: `min(${frameHeight}px, 60vh)` 
+                    }}
+                  >
                     <div className="relative w-full h-full">
                       {uploadedImage ? (
                         <Image
@@ -341,18 +406,18 @@ export default function RoomPage({ params }: Props) {
       )}
 
       {!frameOpen && (
-        <div className="absolute bottom-4 left-0 w-full flex justify-between items-center z-20 px-6">
+        <div className="absolute bottom-4 left-0 w-full flex justify-between items-center z-20 px-4 md:px-6">
           <button
             onClick={handleUploadClick}
-            className="bg-white/10 backdrop-blur-3xl px-4 text-(--brown) flex items-center gap-1 py-2 rounded-lg text-sm"
+            className="bg-white/10 backdrop-blur-3xl px-3 md:px-4 text-(--brown) flex items-center gap-1 py-2 rounded-lg text-sm"
           >
-            <Icon icon="solar:upload-broken" width="40" height="40" />
+            <Icon icon="solar:upload-broken" width="32" height="32" className="md:w-10 md:h-10" />
           </button>
           <button
             onClick={() => setFrameOpen(true)}
-            className="bg-white/10 backdrop-blur-3xl px-4 text-(--brown) flex items-center gap-1 py-2 rounded-lg text-sm"
+            className="bg-white/10 backdrop-blur-3xl px-3 md:px-4 text-(--brown) flex items-center gap-1 py-2 rounded-lg text-sm"
           >
-            <Icon icon="cil:filter-frames" width="40" height="40" />
+            <Icon icon="cil:filter-frames" width="32" height="32" className="md:w-10 md:h-10" />
           </button>
         </div>
       )}
