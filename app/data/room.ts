@@ -7,6 +7,7 @@ export const rooms = [
     tilt: -3,
     offsetX: -14,
     z: 20,
+    type: 'Minimalistic'
   },
   {
     id: "bedroom",
@@ -16,6 +17,7 @@ export const rooms = [
     tilt: 3,
     offsetX: -24,
     z: 20,
+    type: 'Minimalistic'
   },
   {
     id: "office",
@@ -25,6 +27,7 @@ export const rooms = [
      tilt: -3,
     offsetX: -14,
     z: 20,
+    type: 'Minimalistic'
   },
     {
     id: "bedroom2",
@@ -34,6 +37,7 @@ export const rooms = [
    tilt: 3,
     offsetX: -24,
     z: 20,
+    type: 'Minimalistic'
   },
 ];
 
