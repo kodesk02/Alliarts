@@ -4,14 +4,23 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 
-export default function CameraController() {
+type CameraControllerProps = {
+  maxZ?: number; // New prop to limit how far back you can go
+};
+
+export default function CameraController({ maxZ = -18 }: CameraControllerProps) {
   const { mouse } = useThree();
 
+  // scroll position drives forward/back
   const [scrollY, setScrollY] = useState(0);
-  const keyVelocity = useRef(0); // arrow up/down
-  const rotationVelocity = useRef(0); // arrow left/right
 
-  const lookTarget = useRef(new THREE.Vector3(0, 1.8, 0));
+  // arrow keys velocity
+  const moveVelocity = useRef(0); // forward/back
+  const rotateVelocity = useRef(0); // left/right
+
+  // target rotation for smooth camera look
+  const targetYaw = useRef(0);
+  const targetPitch = useRef(0);
 
   /* ---------- SCROLL ---------- */
   useEffect(() => {
@@ -22,21 +31,24 @@ export default function CameraController() {
 
   /* ---------- ARROW KEYS ---------- */
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowUp") keyVelocity.current = 40;
-      if (e.key === "ArrowDown") keyVelocity.current = -40;
-      if (e.key === "ArrowLeft") rotationVelocity.current = 1.5;
-      if (e.key === "ArrowRight") rotationVelocity.current = -1.5;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowUp") moveVelocity.current = 40;
+      if (e.key === "ArrowDown") moveVelocity.current = -40;
+      if (e.key === "ArrowLeft") rotateVelocity.current = 1.5;
+      if (e.key === "ArrowRight") rotateVelocity.current = -1.5;
     };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (["ArrowUp", "ArrowDown"].includes(e.key)) keyVelocity.current = 0;
-      if (["ArrowLeft", "ArrowRight"].includes(e.key)) rotationVelocity.current = 0;
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (["ArrowUp", "ArrowDown"].includes(e.key)) moveVelocity.current = 0;
+      if (["ArrowLeft", "ArrowRight"].includes(e.key)) rotateVelocity.current = 0;
     };
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
     return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
     };
   }, []);
 
@@ -45,26 +57,29 @@ export default function CameraController() {
     const camera = state.camera;
 
     /* ---- 1. Forward/back movement ---- */
-    if (keyVelocity.current !== 0) {
-      setScrollY((prev) => prev - keyVelocity.current * delta);
+    if (moveVelocity.current !== 0) {
+      setScrollY((prev) => prev - moveVelocity.current * delta);
     }
-    const targetZ = Math.max(5 - scrollY * 0.01, -18);
+
+    // Dynamic clamping based on maxZ
+    const targetZ = Math.max(5 - scrollY * 0.01, maxZ);
     camera.position.z += (targetZ - camera.position.z) * 0.08;
 
-    /* ---- 2. Mouse & arrow rotation ---- */
+    /* ---- 2. Horizontal rotation (yaw) ---- */
     const maxYaw = Math.PI / 3; // ~60° left/right
-    const maxPitch = 0.25; // slight up/down
+    targetYaw.current = THREE.MathUtils.clamp(mouse.x * maxYaw + rotateVelocity.current * delta, -maxYaw, maxYaw);
 
-    // combine mouse and arrow keys
-    const yaw = THREE.MathUtils.clamp(mouse.x * maxYaw + rotationVelocity.current * delta, -maxYaw, maxYaw);
-    const pitch = THREE.MathUtils.clamp(-mouse.y * maxPitch, -maxPitch, maxPitch);
+    /* ---- 3. Vertical rotation (pitch) ---- */
+    const maxPitch = 0.25; // ~14° up/down
+    targetPitch.current = THREE.MathUtils.clamp(-mouse.y * maxPitch, -maxPitch, maxPitch);
 
-    lookTarget.current.x = camera.position.x + Math.sin(yaw) * 5;
-    lookTarget.current.y = 1.8 + pitch;
-    lookTarget.current.z = camera.position.z - Math.cos(yaw) * 5;
+    /* ---- 4. Update camera look ---- */
+    const lookTarget = new THREE.Vector3();
+    lookTarget.x = camera.position.x + Math.sin(targetYaw.current) * 5;
+    lookTarget.y = 1.8 + targetPitch.current; // human-eye height
+    lookTarget.z = camera.position.z - Math.cos(targetYaw.current) * 5;
 
-    /* ---- 3. Camera looks at the target ---- */
-    camera.lookAt(lookTarget.current);
+    camera.lookAt(lookTarget);
   });
 
   return null;

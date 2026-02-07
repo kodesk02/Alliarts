@@ -19,7 +19,7 @@ export default function HomePage() {
             <Link
               key={room.id}
               href={`/room/${room.id}`}
-              className={`group relative overflow-hidden shadow-2xl`}
+              className={`group relative overaflow-hidden shadow-2xl`}
               style={{
                 zIndex: room.z,
               }}
