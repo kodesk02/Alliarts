@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 
 type CameraControllerProps = {
-  maxZ?: number; // New prop to limit how far back you can go
+  maxZ?: number;
 };
 
 export default function CameraController({ maxZ = -18 }: CameraControllerProps) {
@@ -22,11 +22,55 @@ export default function CameraController({ maxZ = -18 }: CameraControllerProps) 
   const targetYaw = useRef(0);
   const targetPitch = useRef(0);
 
+  // Touch controls for mobile
+  const touchStart = useRef({ x: 0, y: 0 });
+  const touchCurrent = useRef({ x: 0, y: 0 });
+  const isTouching = useRef(false);
+
   /* ---------- SCROLL ---------- */
   useEffect(() => {
     const onScroll = () => setScrollY(window.scrollY);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  /* ---------- TOUCH CONTROLS FOR MOBILE ---------- */
+  useEffect(() => {
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        isTouching.current = true;
+        touchStart.current = {
+          x: e.touches[0].clientX,
+          y: e.touches[0].clientY,
+        };
+        touchCurrent.current = { ...touchStart.current };
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (isTouching.current && e.touches.length === 1) {
+        touchCurrent.current = {
+          x: e.touches[0].clientX,
+          y: e.touches[0].clientY,
+        };
+      }
+    };
+
+    const handleTouchEnd = () => {
+      isTouching.current = false;
+      touchStart.current = { x: 0, y: 0 };
+      touchCurrent.current = { x: 0, y: 0 };
+    };
+
+    window.addEventListener("touchstart", handleTouchStart);
+    window.addEventListener("touchmove", handleTouchMove);
+    window.addEventListener("touchend", handleTouchEnd);
+
+    return () => {
+      window.removeEventListener("touchstart", handleTouchStart);
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+    };
   }, []);
 
   /* ---------- ARROW KEYS ---------- */
@@ -40,7 +84,8 @@ export default function CameraController({ maxZ = -18 }: CameraControllerProps) 
 
     const handleKeyUp = (e: KeyboardEvent) => {
       if (["ArrowUp", "ArrowDown"].includes(e.key)) moveVelocity.current = 0;
-      if (["ArrowLeft", "ArrowRight"].includes(e.key)) rotateVelocity.current = 0;
+      if (["ArrowLeft", "ArrowRight"].includes(e.key))
+        rotateVelocity.current = 0;
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -65,15 +110,41 @@ export default function CameraController({ maxZ = -18 }: CameraControllerProps) 
     const targetZ = Math.max(5 - scrollY * 0.01, maxZ);
     camera.position.z += (targetZ - camera.position.z) * 0.08;
 
-    /* ---- 2. Horizontal rotation (yaw) ---- */
+    /* ---- 2. Calculate rotation based on input method ---- */
+    let yawInput = 0;
+    let pitchInput = 0;
+
+    if (isTouching.current) {
+      // Touch controls for mobile
+      const touchDeltaX = touchCurrent.current.x - touchStart.current.x;
+      const touchDeltaY = touchCurrent.current.y - touchStart.current.y;
+
+      // Normalize to -1 to 1 range based on screen size
+      yawInput = (touchDeltaX / window.innerWidth) * 2;
+      pitchInput = -(touchDeltaY / window.innerHeight) * 2;
+    } else {
+      // Mouse controls for desktop
+      yawInput = mouse.x;
+      pitchInput = -mouse.y;
+    }
+
+    /* ---- 3. Horizontal rotation (yaw) ---- */
     const maxYaw = Math.PI / 3; // ~60° left/right
-    targetYaw.current = THREE.MathUtils.clamp(mouse.x * maxYaw + rotateVelocity.current * delta, -maxYaw, maxYaw);
+    targetYaw.current = THREE.MathUtils.clamp(
+      yawInput * maxYaw + rotateVelocity.current * delta,
+      -maxYaw,
+      maxYaw
+    );
 
-    /* ---- 3. Vertical rotation (pitch) ---- */
+    /* ---- 4. Vertical rotation (pitch) ---- */
     const maxPitch = 0.25; // ~14° up/down
-    targetPitch.current = THREE.MathUtils.clamp(-mouse.y * maxPitch, -maxPitch, maxPitch);
+    targetPitch.current = THREE.MathUtils.clamp(
+      pitchInput * maxPitch,
+      -maxPitch,
+      maxPitch
+    );
 
-    /* ---- 4. Update camera look ---- */
+    /* ---- 5. Update camera look ---- */
     const lookTarget = new THREE.Vector3();
     lookTarget.x = camera.position.x + Math.sin(targetYaw.current) * 5;
     lookTarget.y = 1.8 + targetPitch.current; // human-eye height
