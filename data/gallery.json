@@ -1,0 +1,18 @@
+{
+  "images": [
+    {
+      "id": 1,
+      "image": "/uploads/1770541466669-aisle.jpg",
+      "z": -2.5,
+      "wall": "left",
+      "uploadedAt": "2026-02-08T09:04:26.672Z"
+    },
+    {
+      "id": 2,
+      "image": "/uploads/1770627925209-frozenfood.jpg",
+      "z": -3.5,
+      "wall": "right",
+      "uploadedAt": "2026-02-09T09:05:25.243Z"
+    }
+  ]
+}
