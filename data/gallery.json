@@ -90,6 +90,20 @@
       "z": -20.5,
       "wall": "left",
       "uploadedAt": "2026-02-17T10:05:46.746Z"
+    },
+    {
+      "id": 14,
+      "image": "/uploads/1771324139540-chicken2.jpg",
+      "z": -21.5,
+      "wall": "right",
+      "uploadedAt": "2026-02-17T10:28:59.544Z"
+    },
+    {
+      "id": 15,
+      "image": "/uploads/1771324166665-live1.jpg",
+      "z": -23.5,
+      "wall": "left",
+      "uploadedAt": "2026-02-17T10:29:26.668Z"
     }
   ]
 }
