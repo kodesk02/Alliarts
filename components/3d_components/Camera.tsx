@@ -1,155 +1,121 @@
 "use client";
 
 import { useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
 type CameraControllerProps = {
-  maxZ?: number;
+  minZ?: number; // furthest point (most negative z)
+  maxZ?: number; // starting point (most positive z)
 };
 
-export default function CameraController({ maxZ = -18 }: CameraControllerProps) {
+export default function CameraController({ minZ = -57, maxZ = 6 }: CameraControllerProps) {
   const { mouse } = useThree();
 
-  // scroll position drives forward/back
-  const [scrollY, setScrollY] = useState(0);
-
-  // arrow keys velocity
-  const moveVelocity = useRef(0); // forward/back
-  const rotateVelocity = useRef(0); // left/right
-
-  // target rotation for smooth camera look
+  const posZ = useRef(maxZ);
+  const moveVelocity = useRef(0);
+  const rotateVelocity = useRef(0);
   const targetYaw = useRef(0);
   const targetPitch = useRef(0);
 
-  // Touch controls for mobile
   const touchStart = useRef({ x: 0, y: 0 });
   const touchCurrent = useRef({ x: 0, y: 0 });
   const isTouching = useRef(false);
 
-  /* ---------- SCROLL ---------- */
+  /* ── Touch controls ── */
   useEffect(() => {
-    const onScroll = () => setScrollY(window.scrollY);
-    window.addEventListener("scroll", onScroll);
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  /* ---------- TOUCH CONTROLS FOR MOBILE ---------- */
-  useEffect(() => {
-    const handleTouchStart = (e: TouchEvent) => {
+    const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) {
         isTouching.current = true;
-        touchStart.current = {
-          x: e.touches[0].clientX,
-          y: e.touches[0].clientY,
-        };
+        touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
         touchCurrent.current = { ...touchStart.current };
       }
     };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (isTouching.current && e.touches.length === 1) {
-        touchCurrent.current = {
-          x: e.touches[0].clientX,
-          y: e.touches[0].clientY,
-        };
-      }
+    const onTouchMove = (e: TouchEvent) => {
+      if (isTouching.current && e.touches.length === 1)
+        touchCurrent.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     };
-
-    const handleTouchEnd = () => {
+    const onTouchEnd = () => {
       isTouching.current = false;
       touchStart.current = { x: 0, y: 0 };
       touchCurrent.current = { x: 0, y: 0 };
     };
-
-    window.addEventListener("touchstart", handleTouchStart);
-    window.addEventListener("touchmove", handleTouchMove);
-    window.addEventListener("touchend", handleTouchEnd);
-
+    window.addEventListener("touchstart", onTouchStart);
+    window.addEventListener("touchmove", onTouchMove);
+    window.addEventListener("touchend", onTouchEnd);
     return () => {
-      window.removeEventListener("touchstart", handleTouchStart);
-      window.removeEventListener("touchmove", handleTouchMove);
-      window.removeEventListener("touchend", handleTouchEnd);
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
     };
   }, []);
 
-  /* ---------- ARROW KEYS ---------- */
+  /* ── Arrow / WASD keys ── */
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowUp") moveVelocity.current = 40;
-      if (e.key === "ArrowDown") moveVelocity.current = -40;
-      if (e.key === "ArrowLeft") rotateVelocity.current = 1.5;
-      if (e.key === "ArrowRight") rotateVelocity.current = -1.5;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowUp" || e.key === "w" || e.key === "W") moveVelocity.current = 10;
+      if (e.key === "ArrowDown" || e.key === "s" || e.key === "S") moveVelocity.current = -10;
+      if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") rotateVelocity.current = 1.8;
+      if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") rotateVelocity.current = -1.8;
     };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (["ArrowUp", "ArrowDown"].includes(e.key)) moveVelocity.current = 0;
-      if (["ArrowLeft", "ArrowRight"].includes(e.key))
-        rotateVelocity.current = 0;
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (["ArrowUp", "ArrowDown", "w", "W", "s", "S"].includes(e.key)) moveVelocity.current = 0;
+      if (["ArrowLeft", "ArrowRight", "a", "A", "d", "D"].includes(e.key)) rotateVelocity.current = 0;
     };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
     };
   }, []);
 
-  /* ---------- FRAME LOOP ---------- */
+  /* ── Per-frame update ── */
   useFrame((state, delta) => {
     const camera = state.camera;
 
-    /* ---- 1. Forward/back movement ---- */
-    if (moveVelocity.current !== 0) {
-      setScrollY((prev) => prev - moveVelocity.current * delta);
-    }
+    // Move forward/back — clamped between minZ and maxZ
+    posZ.current = THREE.MathUtils.clamp(
+      posZ.current - moveVelocity.current * delta,
+      minZ,
+      maxZ
+    );
 
-    // Dynamic clamping based on maxZ
-    const targetZ = Math.max(5 - scrollY * 0.01, maxZ);
-    camera.position.z += (targetZ - camera.position.z) * 0.08;
+    // Smoothly interpolate camera position
+    camera.position.z += (posZ.current - camera.position.z) * 0.12;
+    camera.position.x += (0 - camera.position.x) * 0.04; // keep centered on X
+    camera.position.y += (1.8 - camera.position.y) * 0.12;
 
-    /* ---- 2. Calculate rotation based on input method ---- */
+    // Rotation input source
     let yawInput = 0;
     let pitchInput = 0;
 
     if (isTouching.current) {
-      // Touch controls for mobile
-      const touchDeltaX = touchCurrent.current.x - touchStart.current.x;
-      const touchDeltaY = touchCurrent.current.y - touchStart.current.y;
-
-      // Normalize to -1 to 1 range based on screen size
-      yawInput = (touchDeltaX / window.innerWidth) * 2;
-      pitchInput = -(touchDeltaY / window.innerHeight) * 2;
+      yawInput = ((touchCurrent.current.x - touchStart.current.x) / window.innerWidth) * 2;
+      pitchInput = -(((touchCurrent.current.y - touchStart.current.y) / window.innerHeight) * 2);
     } else {
-      // Mouse controls for desktop
       yawInput = mouse.x;
       pitchInput = -mouse.y;
     }
 
-    /* ---- 3. Horizontal rotation (yaw) ---- */
-    const maxYaw = Math.PI / 3; // ~60° left/right
+    // Update yaw from both mouse and key rotation
+    const maxYaw = Math.PI / 2.5;
+    targetYaw.current += rotateVelocity.current * delta;
     targetYaw.current = THREE.MathUtils.clamp(
-      yawInput * maxYaw + rotateVelocity.current * delta,
+      yawInput * maxYaw + targetYaw.current * 0.02, // blend key-accumulated yaw with mouse
       -maxYaw,
       maxYaw
     );
 
-    /* ---- 4. Vertical rotation (pitch) ---- */
-    const maxPitch = 0.25; // ~14° up/down
-    targetPitch.current = THREE.MathUtils.clamp(
-      pitchInput * maxPitch,
-      -maxPitch,
-      maxPitch
+    // Pitch
+    targetPitch.current = THREE.MathUtils.clamp(pitchInput * 0.35, -0.35, 0.35);
+
+    // Look target
+    const lookTarget = new THREE.Vector3(
+      camera.position.x + Math.sin(targetYaw.current) * 5,
+      1.8 + targetPitch.current,
+      camera.position.z - Math.cos(targetYaw.current) * 5
     );
-
-    /* ---- 5. Update camera look ---- */
-    const lookTarget = new THREE.Vector3();
-    lookTarget.x = camera.position.x + Math.sin(targetYaw.current) * 5;
-    lookTarget.y = 1.8 + targetPitch.current; // human-eye height
-    lookTarget.z = camera.position.z - Math.cos(targetYaw.current) * 5;
-
     camera.lookAt(lookTarget);
   });
 

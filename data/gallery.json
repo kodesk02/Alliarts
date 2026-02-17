@@ -2,17 +2,94 @@
   "images": [
     {
       "id": 1,
-      "image": "/uploads/1770541466669-aisle.jpg",
+      "image": "/uploads/1771320662549-chicken2.jpg",
       "z": -2.5,
       "wall": "left",
-      "uploadedAt": "2026-02-08T09:04:26.672Z"
+      "uploadedAt": "2026-02-17T09:31:02.552Z"
     },
     {
       "id": 2,
-      "image": "/uploads/1770627925209-frozenfood.jpg",
+      "image": "/uploads/1771322352729-chicken3.jpg",
       "z": -3.5,
       "wall": "right",
-      "uploadedAt": "2026-02-09T09:05:25.243Z"
+      "uploadedAt": "2026-02-17T09:59:12.732Z"
+    },
+    {
+      "id": 3,
+      "image": "/uploads/1771322419134-geese2.jpg",
+      "z": -5.5,
+      "wall": "left",
+      "uploadedAt": "2026-02-17T10:00:19.136Z"
+    },
+    {
+      "id": 4,
+      "image": "/uploads/1771322450498-live4.jpg",
+      "z": -6.5,
+      "wall": "right",
+      "uploadedAt": "2026-02-17T10:00:50.501Z"
+    },
+    {
+      "id": 5,
+      "image": "/uploads/1771322481630-parrot4.jpg",
+      "z": -8.5,
+      "wall": "left",
+      "uploadedAt": "2026-02-17T10:01:21.632Z"
+    },
+    {
+      "id": 6,
+      "image": "/uploads/1771322511612-live2.jpg",
+      "z": -9.5,
+      "wall": "right",
+      "uploadedAt": "2026-02-17T10:01:51.614Z"
+    },
+    {
+      "id": 7,
+      "image": "/uploads/1771322538881-live4.jpg",
+      "z": -11.5,
+      "wall": "left",
+      "uploadedAt": "2026-02-17T10:02:18.883Z"
+    },
+    {
+      "id": 8,
+      "image": "/uploads/1771322579499-chicken4.jpg",
+      "z": -12.5,
+      "wall": "right",
+      "uploadedAt": "2026-02-17T10:02:59.501Z"
+    },
+    {
+      "id": 9,
+      "image": "/uploads/1771322608112-chicken4.jpg",
+      "z": -14.5,
+      "wall": "left",
+      "uploadedAt": "2026-02-17T10:03:28.115Z"
+    },
+    {
+      "id": 10,
+      "image": "/uploads/1771322636628-parrot5.jpg",
+      "z": -15.5,
+      "wall": "right",
+      "uploadedAt": "2026-02-17T10:03:56.631Z"
+    },
+    {
+      "id": 11,
+      "image": "/uploads/1771322678260-chicken1.jpg",
+      "z": -17.5,
+      "wall": "left",
+      "uploadedAt": "2026-02-17T10:04:38.263Z"
+    },
+    {
+      "id": 12,
+      "image": "/uploads/1771322711076-parrot4.jpg",
+      "z": -18.5,
+      "wall": "right",
+      "uploadedAt": "2026-02-17T10:05:11.078Z"
+    },
+    {
+      "id": 13,
+      "image": "/uploads/1771322746742-parrot6.jpg",
+      "z": -20.5,
+      "wall": "left",
+      "uploadedAt": "2026-02-17T10:05:46.746Z"
     }
   ]
 }

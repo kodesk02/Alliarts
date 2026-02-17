@@ -1,11 +1,10 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import CameraController from "./Camera";
 import Art from "./Art";
 import Door from "./Door";
-import Decoration from "./Decoration";
 import Chandelier from "./Chandelier";
 
 type WallArtItem = {
@@ -15,51 +14,70 @@ type WallArtItem = {
   wall: "left" | "right";
 };
 
+// ─── Layout constants ───────────────────────────────────────────
+const HALL_START_Z = 2;     // front of corridor (elevator mouth)
+const HALL_W       = 18;    // corridor width — left wall at x=-9, right wall at x=9
+const WALL_H       = 9;
+const ART_Y        = 3.2;   // art centre height
+const ART_SPACING  = 7;     // z distance between art slots on each wall
+const SLOT_START_Z = HALL_START_Z - 4;  // first slot z position
+const WALL_MARGIN  = 5;     // clear gap between last slot and back wall
+const MIN_HALL_END = -40;   // gallery is at least this deep
+
+// ─── Slot system ────────────────────────────────────────────────
+// Slots alternate: even index = left wall, odd index = right wall
+// Both walls fill in parallel from front to back.
+// When both walls are full the back wall pushes further and new slots appear.
+
+function computeSlots(hallEndZ: number) {
+  // Build z positions for one wall
+  const zPositions: number[] = [];
+  for (let z = SLOT_START_Z; z > hallEndZ + WALL_MARGIN; z -= ART_SPACING) {
+    zPositions.push(z);
+  }
+
+  // Interleave: [left@z0, right@z0, left@z1, right@z1, ...]
+  const slots: { position: [number, number, number]; rotation: [number, number, number] }[] = [];
+  for (const z of zPositions) {
+    // Left wall (x = -5), art faces right → rotation y = PI/2
+    slots.push({ position: [-( HALL_W / 2 - 0.08), ART_Y, z], rotation: [0,  Math.PI / 2, 0] });
+    // Right wall (x = +5), art faces left → rotation y = -PI/2
+    slots.push({ position: [  HALL_W / 2 - 0.08,   ART_Y, z], rotation: [0, -Math.PI / 2, 0] });
+  }
+  return slots;
+}
+
+function requiredHallEnd(artCount: number): number {
+  let endZ = MIN_HALL_END;
+  // Grow hall until we have strictly MORE slots than artworks
+  while (computeSlots(endZ).length <= artCount) {
+    endZ -= ART_SPACING; // push back wall one slot-width at a time
+  }
+  return endZ;
+}
+
 export default function Scene() {
   const [wallArt, setWallArt] = useState<WallArtItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]   = useState(true);
   const [clearing, setClearing] = useState(false);
 
-  useEffect(() => {
-    fetchGalleryImages();
-  }, []);
+  useEffect(() => { fetchGalleryImages(); }, []);
 
   const handleClearGallery = async () => {
-    console.log("BUTTON CLICKED!");
-    
-    if (
-      !confirm(
-        "Are you sure you want to delete all artwork? This cannot be undone!",
-      )
-    ) {
-      return;
-    }
-
+    if (!confirm("Are you sure you want to delete all artwork? This cannot be undone!")) return;
     setClearing(true);
-
     try {
-      const response = await fetch("/api/gallery/clear", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      const data = await response.json();
-
+      const res  = await fetch("/api/gallery/clear", { method: "DELETE", headers: { "Content-Type": "application/json" } });
+      const data = await res.json();
       if (data.success) {
         setWallArt([]);
-        alert("Gallery cleared! 🗑️");
-        
-        setTimeout(() => {
-          window.location.reload();
-        }, 100);
+        alert("Gallery cleared!");
+        setTimeout(() => window.location.reload(), 100);
       } else {
         alert("Failed to clear gallery: " + (data.error || "Unknown error"));
         setClearing(false);
       }
-    } catch (error) {
-      console.error("Clear error:", error);
+    } catch (err) {
       alert("Failed to clear gallery");
       setClearing(false);
     }
@@ -67,357 +85,242 @@ export default function Scene() {
 
   const fetchGalleryImages = async () => {
     try {
-      const response = await fetch("/api/gallery");
-      const data = await response.json();
-
-      if (data.success) {
-        setWallArt(data.images);
-      }
-    } catch (error) {
-      console.error("Failed to fetch gallery images:", error);
+      const res  = await fetch("/api/gallery");
+      const data = await res.json();
+      if (data.success) setWallArt(data.images);
+    } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  const calculateHallwayLength = () => {
-    if (wallArt.length === 0) return 40;
+  // ── Everything derived from art count ──────────────────────────
+  const { hallEndZ, slots, assignedArt, hallMidZ, hallLen } = useMemo(() => {
+    const hallEndZ    = requiredHallEnd(wallArt.length);
+    const slots       = computeSlots(hallEndZ);
+    const assignedArt = wallArt.map((art, i) => ({ ...art, slot: slots[i] }));
+    const hallMidZ    = (HALL_START_Z + hallEndZ) / 2;
+    const hallLen     = HALL_START_Z - hallEndZ;
+    return { hallEndZ, slots, assignedArt, hallMidZ, hallLen };
+  }, [wallArt.length]);
 
-    const furthestZ = Math.min(...wallArt.map((art) => art.z));
-    const requiredLength = Math.abs(furthestZ) + 30;
-
-    return Math.max(40, requiredLength);
-  };
-
-  const hallwayLength = calculateHallwayLength();
-  
-  const backWallZ = wallArt.length === 0 
-    ? -20 
-    : Math.min(...wallArt.map((art) => art.z)) - 10;
-  
-  const doorZ = backWallZ + 0.5;
+  // Camera limit, door position, light count all follow the back wall
+  const doorZ      = hallEndZ + 0.3;
+  const camMinZ    = hallEndZ + 3;
+  const numLights  = Math.ceil(hallLen / 10);
 
   return (
-    <div className="relative w-full h-screen overflow-hidden">
+    <div style={{ position:"relative", width:"100%", height:"100vh", overflow:"hidden", background:"#e8e8e8" }}>
       {(loading || clearing) && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-50 text-white">
-          <div className="text-2xl">
-            {clearing ? "Clearing Gallery..." : "Loading Gallery..."}
+        <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center",
+          justifyContent:"center", background:"rgba(255,255,255,0.92)", zIndex:50, color:"#111" }}>
+          <div style={{ fontSize:20, fontWeight:300, letterSpacing:"0.2em" }}>
+            {clearing ? "CLEARING GALLERY..." : "LOADING GALLERY..."}
           </div>
         </div>
       )}
 
       <Canvas
-        camera={{
-          position: [0, 1, 5],
-          fov: 60,
-        }}
+        camera={{ position: [0, 1.8, 6], fov: 70 }}
         shadows
-        gl={{ 
-          antialias: true,
-          alpha: false,
-          powerPreference: "high-performance",
-          preserveDrawingBuffer: false,
-          failIfMajorPerformanceCaveat: false,
-        }}
+        gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
         dpr={[1, 2]}
         performance={{ min: 0.5 }}
       >
-        {/* Professional Museum Lighting */}
-        <ambientLight intensity={1.6} color="#f5f5f5" />
-        
-        {/* Main overhead lighting */}
-        <directionalLight 
-          position={[0, 10, 0]} 
-          intensity={0.2} 
-          color="#ffffff"
-          castShadow
-          shadow-mapSize-width={2048}
-          shadow-mapSize-height={2048}
-        />
+        {/* ── Lighting ── */}
+        <ambientLight intensity={3.0} color="#ffffff" />
+        <directionalLight position={[0, 12, hallMidZ]} intensity={0.7} color="#ffffff" castShadow />
+        <directionalLight position={[ 8, 6, hallMidZ - 15]} intensity={0.25} color="#f0f0ff" />
+        <directionalLight position={[-8, 6, hallMidZ + 15]} intensity={0.25} color="#f0f0ff" />
+        {/* Always light the back wall and door */}
+        <pointLight position={[0, 5, hallEndZ + 8]} intensity={3} distance={16} color="#ffffff" />
+        <fog attach="fog" args={["#e8e8e8", 40, Math.abs(hallEndZ) + 35]} />
 
-        {/* Accent lighting from sides */}
-        <directionalLight 
-          position={[10, 5, 0]} 
-          intensity={0.3} 
-          color="#e8dcc4"
-        />
-        <directionalLight 
-          position={[-10, 5, 0]} 
-          intensity={0.3} 
-          color="#e8dcc4"
-        />
+        {/* CameraController gets updated minZ every time hall grows */}
+        <CameraController minZ={camMinZ} maxZ={6} />
 
-        <CameraController maxZ={backWallZ - 5} />
-
-        {/* Chandeliers - Spaced elegantly */}
-        {Array.from({ length: Math.ceil(hallwayLength / 12) }).map((_, i) => (
-          <Chandelier key={i} position={[0, 7, -i * 12 + 2]} />
-        ))}
-
-        {/* Floor - Light gray polished */}
-        <mesh
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={[0, 0, -hallwayLength / 2 + 20]}
-          receiveShadow
-        >
-          <planeGeometry args={[10, hallwayLength]} />
-          <meshStandardMaterial 
-            color="#c8c8c8"
-            roughness={0.2}
-            metalness={0.3}
-          />
+        {/* ══════════════════════════════════════════
+            ELEVATOR LOBBY
+        ══════════════════════════════════════════ */}
+        {/* Floor */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 8]}>
+          <planeGeometry args={[18, 6]} />
+          <meshStandardMaterial color="#c8c8c8" roughness={0.2} metalness={0.3} />
         </mesh>
-
-        {/* Floor border detail - left */}
-        <mesh
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={[-4.5, 0.01, -hallwayLength / 2 + 20]}
-          receiveShadow
-        >
-          <planeGeometry args={[0.3, hallwayLength]} />
-          <meshStandardMaterial 
-            color="#a0a0a0"
-            roughness={0.3}
-            metalness={0.2}
-          />
+        {/* Ceiling */}
+        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, WALL_H, 8]}>
+          <planeGeometry args={[18, 6]} />
+          <meshStandardMaterial color="#f0f0f0" roughness={0.9} />
         </mesh>
-
-        {/* Floor border detail - right */}
-        <mesh
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={[4.5, 0.01, -hallwayLength / 2 + 20]}
-          receiveShadow
-        >
-          <planeGeometry args={[0.3, hallwayLength]} />
-          <meshStandardMaterial 
-            color="#a0a0a0"
-            roughness={0.3}
-            metalness={0.2}
-          />
+        {/* Left wall */}
+        <mesh rotation={[0, Math.PI / 2, 0]} position={[-9, WALL_H / 2, 8]}>
+          <planeGeometry args={[6, WALL_H]} />
+          <meshStandardMaterial color="#cccccc" roughness={0.4} metalness={0.4} />
         </mesh>
-
-        {/* Left wall - Blackish with texture */}
-        <mesh
-          rotation={[0, Math.PI / 2, 0]}
-          position={[-5, 4, -hallwayLength / 2 + 20]}
-          receiveShadow
-        >
-          <planeGeometry args={[hallwayLength, 8]} />
-          <meshStandardMaterial 
-            color="#1a1a1a"
-            roughness={0.8}
-            metalness={0.1}
-          />
+        {/* Right wall */}
+        <mesh rotation={[0, -Math.PI / 2, 0]} position={[9, WALL_H / 2, 8]}>
+          <planeGeometry args={[6, WALL_H]} />
+          <meshStandardMaterial color="#cccccc" roughness={0.4} metalness={0.4} />
         </mesh>
-
-        {/* Left wall decorative panels */}
-        {Array.from({ length: Math.ceil(hallwayLength / 8) }).map((_, i) => (
-          <mesh
-            key={`left-panel-${i}`}
-            rotation={[0, Math.PI / 2, 0]}
-            position={[-4.98, 4, -i * 8 + 2]}
-          >
-            <planeGeometry args={[6, 6]} />
-            <meshStandardMaterial 
-              color="#242424"
-              roughness={0.7}
-              metalness={0.2}
-            />
+        {/* Back wall */}
+        <mesh position={[0, WALL_H / 2, 11]}>
+          <planeGeometry args={[18, WALL_H]} />
+          <meshStandardMaterial color="#bbbbbb" roughness={0.3} metalness={0.5} />
+        </mesh>
+        {/* Mirror */}
+        <mesh position={[0, WALL_H / 2, 10.9]}>
+          <planeGeometry args={[4, 6]} />
+          <meshStandardMaterial color="#d8d8d8" roughness={0.05} metalness={0.9} />
+        </mesh>
+        {/* Checkerboard floor tiles */}
+        {[-3, -2, -1, 0, 1, 2, 3].map((xi) => [-1, 0, 1].map((zi) => (
+          <mesh key={`tile-${xi}-${zi}`} rotation={[-Math.PI / 2, 0, 0]} position={[xi * 2.5, 0.01, 8 + zi * 2]}>
+            <planeGeometry args={[2.45, 1.95]} />
+            <meshStandardMaterial color={Math.abs(xi + zi) % 2 === 0 ? "#d0d0d0" : "#b8b8b8"} roughness={0.2} metalness={0.1} />
+          </mesh>
+        )))}
+        {/* Glowing ceiling panel */}
+        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, WALL_H - 0.05, 8]}>
+          <planeGeometry args={[17, 5.6]} />
+          <meshStandardMaterial color="#ffffff" emissive="#fff8f0" emissiveIntensity={0.6} />
+        </mesh>
+        <pointLight position={[0, 7, 8]} intensity={2} distance={10} color="#fff8f0" />
+        {/* Metal trim strips */}
+        {([-9, 9] as number[]).map((x) => (
+          <mesh key={`etrim-${x}`} position={[x > 0 ? 8.95 : -8.95, WALL_H / 2, 8]}>
+            <boxGeometry args={[0.06, WALL_H, 6]} />
+            <meshStandardMaterial color="#aaaaaa" metalness={0.9} roughness={0.1} />
           </mesh>
         ))}
-
-        {/* Left wall top trim - gold accent */}
-        <mesh
-          rotation={[0, Math.PI / 2, 0]}
-          position={[-4.95, 7.8, -hallwayLength / 2 + 20]}
-        >
-          <boxGeometry args={[hallwayLength, 0.15, 0.08]} />
-          <meshStandardMaterial 
-            color="#c9a961" 
-            metalness={0.9} 
-            roughness={0.1}
-          />
+        {/* Floor number display */}
+        <mesh position={[0, 7.5, 5.5]}>
+          <boxGeometry args={[1.2, 0.6, 0.05]} />
+          <meshStandardMaterial color="#111111" />
+        </mesh>
+        <mesh position={[0, 7.5, 5.44]}>
+          <planeGeometry args={[0.9, 0.35]} />
+          <meshStandardMaterial color="#00ff88" emissive="#00ff88" emissiveIntensity={0.9} />
         </mesh>
 
-        {/* Left wall bottom trim - gold accent */}
-        <mesh
-          rotation={[0, Math.PI / 2, 0]}
-          position={[-4.95, 0.2, -hallwayLength / 2 + 20]}
-        >
-          <boxGeometry args={[hallwayLength, 0.15, 0.08]} />
-          <meshStandardMaterial 
-            color="#c9a961" 
-            metalness={0.9} 
-            roughness={0.1}
-          />
+        {/* ══════════════════════════════════════════
+            MAIN CORRIDOR
+            All geometry keyed on hallLen so R3F remounts
+            (not just updates) when the hall grows.
+        ══════════════════════════════════════════ */}
+
+        {/* Floor */}
+        <mesh key={`floor-${hallLen}`}
+          rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, hallMidZ]}>
+          <planeGeometry args={[HALL_W, hallLen]} />
+          <meshStandardMaterial color="#e2e2e2" roughness={0.15} metalness={0.05} />
         </mesh>
 
-        {/* Wall art */}
-        {wallArt.map((art) => {
-          const isLeft = art.wall === "left";
-
-          return (
-            <Art
-              key={art.id}
-              position={[isLeft ? -4.94 : 4.94, 2.8, art.z]}
-              rotation={isLeft ? [0, Math.PI / 2, 0] : [0, -Math.PI / 2, 0]}
-              image={art.image}
-            />
-          );
-        })}
-
-        {/* Right wall - Blackish with texture */}
-        <mesh
-          rotation={[0, -Math.PI / 2, 0]}
-          position={[5, 4, -hallwayLength / 2 + 20]}
-          receiveShadow
-        >
-          <planeGeometry args={[hallwayLength, 8]} />
-          <meshStandardMaterial 
-            color="#1a1a1a"
-            roughness={0.8}
-            metalness={0.1}
-          />
+        {/* Ceiling */}
+        <mesh key={`ceiling-${hallLen}`}
+          rotation={[Math.PI / 2, 0, 0]} position={[0, WALL_H, hallMidZ]}>
+          <planeGeometry args={[HALL_W, hallLen]} />
+          <meshStandardMaterial color="#fafafa" roughness={0.9} />
         </mesh>
 
-        {/* Right wall decorative panels */}
-        {Array.from({ length: Math.ceil(hallwayLength / 8) }).map((_, i) => (
-          <mesh
-            key={`right-panel-${i}`}
-            rotation={[0, -Math.PI / 2, 0]}
-            position={[4.98, 4, -i * 8 + 2]}
-          >
-            <planeGeometry args={[6, 6]} />
-            <meshStandardMaterial 
-              color="#242424"
-              roughness={0.7}
-              metalness={0.2}
-            />
-          </mesh>
+        {/* Left wall  x = -HALL_W/2 */}
+        <mesh key={`left-${hallLen}`}
+          rotation={[0, Math.PI / 2, 0]} position={[-HALL_W / 2, WALL_H / 2, hallMidZ]}>
+          <planeGeometry args={[hallLen, WALL_H]} />
+          <meshStandardMaterial color="#d4d4d4" roughness={0.65} />
+        </mesh>
+
+        {/* Right wall  x = +HALL_W/2 */}
+        <mesh key={`right-${hallLen}`}
+          rotation={[0, -Math.PI / 2, 0]} position={[HALL_W / 2, WALL_H / 2, hallMidZ]}>
+          <planeGeometry args={[hallLen, WALL_H]} />
+          <meshStandardMaterial color="#d4d4d4" roughness={0.65} />
+        </mesh>
+
+        {/* Left baseboard */}
+        <mesh key={`bl-${hallLen}`}
+          rotation={[0, Math.PI / 2, 0]} position={[-HALL_W / 2 + 0.05, 0.07, hallMidZ]}>
+          <boxGeometry args={[hallLen, 0.14, 0.04]} />
+          <meshStandardMaterial color="#b8b8b8" roughness={0.4} />
+        </mesh>
+
+        {/* Right baseboard */}
+        <mesh key={`br-${hallLen}`}
+          rotation={[0, -Math.PI / 2, 0]} position={[HALL_W / 2 - 0.05, 0.07, hallMidZ]}>
+          <boxGeometry args={[hallLen, 0.14, 0.04]} />
+          <meshStandardMaterial color="#b8b8b8" roughness={0.4} />
+        </mesh>
+
+        {/* Ceiling light strip (centre) */}
+        <mesh key={`strip-${hallLen}`}
+          rotation={[Math.PI / 2, 0, 0]} position={[0, WALL_H - 0.01, hallMidZ]}>
+          <planeGeometry args={[0.2, hallLen]} />
+          <meshStandardMaterial color="#ffffff" emissive="#fffbf0" emissiveIntensity={0.5} />
+        </mesh>
+
+        {/* Pendant lights — spread across wider hall */}
+        {Array.from({ length: numLights }).map((_, i) => (
+          <group key={`light-${i}-${hallLen}`}>
+            <Chandelier position={[-4, WALL_H, HALL_START_Z - i * 10 - 3]} />
+            <Chandelier position={[ 4, WALL_H, HALL_START_Z - i * 10 - 3]} />
+          </group>
         ))}
 
-        {/* Right wall top trim - gold accent */}
-        <mesh
-          rotation={[0, -Math.PI / 2, 0]}
-          position={[4.95, 7.8, -hallwayLength / 2 + 20]}
-        >
-          <boxGeometry args={[hallwayLength, 0.15, 0.08]} />
-          <meshStandardMaterial 
-            color="#c9a961" 
-            metalness={0.9} 
-            roughness={0.1}
-          />
+        {/* ══════════════════════════════════════════
+            BACK WALL — shifts with hallEndZ
+        ══════════════════════════════════════════ */}
+        <mesh key={`backwall-${hallEndZ}`} position={[0, WALL_H / 2, hallEndZ]}>
+          <planeGeometry args={[HALL_W, WALL_H]} />
+          <meshStandardMaterial color="#cccccc" roughness={0.8} />
         </mesh>
 
-        {/* Right wall bottom trim - gold accent */}
-        <mesh
-          rotation={[0, -Math.PI / 2, 0]}
-          position={[4.95, 0.2, -hallwayLength / 2 + 20]}
-        >
-          <boxGeometry args={[hallwayLength, 0.15, 0.08]} />
-          <meshStandardMaterial 
-            color="#c9a961" 
-            metalness={0.9} 
-            roughness={0.1}
-          />
-        </mesh>
+        {/* Door always on back wall */}
+        <Door key={`door-${hallEndZ}`} position={[0, 1.5, doorZ]} />
 
-        {/* Decorative pedestals */}
-        {Array.from({ length: Math.floor(hallwayLength / 15) }).map((_, i) => (
-          <Decoration 
-            key={`left-${i}`} 
-            position={[-3.5, 0, -i * 15 - 7]} 
-            type="pedestal"
+        {/* ══════════════════════════════════════════
+            ARTWORK
+            Each piece gets the slot at its index.
+            Left wall = even indices, Right wall = odd indices.
+            Both walls fill together front-to-back.
+        ══════════════════════════════════════════ */}
+        {assignedArt.map((art) => (
+          <Art
+            key={art.id}
+            position={art.slot.position}
+            rotation={art.slot.rotation}
+            image={art.image}
           />
         ))}
-        
-        {Array.from({ length: Math.floor(hallwayLength / 15) }).map((_, i) => (
-          <Decoration 
-            key={`right-${i}`} 
-            position={[3.5, 0, -i * 15 - 10]} 
-            type="pedestal"
-          />
-        ))}
-
-        {/* Ceiling - Light gray */}
-        <mesh
-          rotation={[Math.PI / 2, 0, 0]}
-          position={[0, 8, -hallwayLength / 2 + 20]}
-        >
-          <planeGeometry args={[10, hallwayLength]} />
-          <meshStandardMaterial 
-            color="#d0d0d0"
-            roughness={0.9}
-          />
-        </mesh>
-
-        {/* Ceiling recessed lighting panels */}
-        {Array.from({ length: Math.ceil(hallwayLength / 6) }).map((_, i) => (
-          <mesh
-            key={`ceiling-light-${i}`}
-            rotation={[Math.PI / 2, 0, 0]}
-            position={[0, 7.98, -i * 6 + 2]}
-          >
-            <planeGeometry args={[2, 2]} />
-            <meshStandardMaterial 
-              color="#ffffff"
-              emissive="#fff8e7"
-              emissiveIntensity={0.3}
-            />
-          </mesh>
-        ))}
-
-        {/* Ceiling trim */}
-        <mesh
-          rotation={[Math.PI / 2, 0, 0]}
-          position={[0, 8, -hallwayLength / 2 + 20]}
-        >
-          <boxGeometry args={[10.2, hallwayLength, 0.05]} />
-          <meshStandardMaterial 
-            color="#b8b8b8"
-            roughness={0.5}
-          />
-        </mesh>
-
-        {/* Back wall - Blackish */}
-        <mesh position={[0, 4, backWallZ]} receiveShadow>
-          <planeGeometry args={[10, 8]} />
-          <meshStandardMaterial 
-            color="#1a1a1a"
-            roughness={0.8}
-          />
-        </mesh>
-
-        {/* Back wall decorative panel */}
-        <mesh position={[0, 4, backWallZ + 0.01]}>
-          <planeGeometry args={[8, 6]} />
-          <meshStandardMaterial 
-            color="#242424"
-            roughness={0.7}
-          />
-        </mesh>
-
-        {/* Door */}
-        <Door position={[0, 1.5, doorZ]} />
       </Canvas>
 
-      {/* Instructions overlay */}
-      <div className="absolute bottom-4 left-4 bg-black/50 text-white p-4 rounded-lg backdrop-blur-sm z-[100] pointer-events-auto">
-        <p className="text-sm">🖱️ Mouse: Look around</p>
-        <p className="text-sm">⬆️⬇️ Arrow Keys: Move forward/backward</p>
-        <p className="text-sm">⬅️➡️ Arrow Keys: Turn left/right</p>
-        <p className="text-sm">🚪 Click door to upload images</p>
-        <p className="text-sm font-semibold mt-2">
-          Gallery: {wallArt.length} artwork{wallArt.length !== 1 ? "s" : ""}
+      {/* HUD */}
+      <div style={{
+        position:"absolute", bottom:24, left:24,
+        background:"rgba(255,255,255,0.88)", backdropFilter:"blur(10px)",
+        border:"1px solid rgba(0,0,0,0.07)", borderRadius:2,
+        padding:"16px 20px", zIndex:100, minWidth:220, fontFamily:"sans-serif",
+      }}>
+        <p style={{ fontSize:10, color:"#999", letterSpacing:"0.15em", margin:"0 0 6px" }}>NAVIGATION</p>
+        <p style={{ fontSize:12, color:"#444", margin:"2px 0" }}>↑ ↓ &nbsp; Move forward / backward</p>
+        <p style={{ fontSize:12, color:"#444", margin:"2px 0" }}>← → &nbsp; Turn left / right</p>
+        <p style={{ fontSize:12, color:"#444", margin:"2px 0" }}>🖱 Mouse to look around</p>
+        <p style={{ fontSize:12, color:"#444", margin:"2px 0" }}>🚪 Door at the end of the hall</p>
+        <div style={{ height:1, background:"#eee", margin:"10px 0" }} />
+        <p style={{ fontSize:10, color:"#bbb", letterSpacing:"0.12em", margin:"0 0 8px" }}>
+          COLLECTION — {wallArt.length} WORK{wallArt.length !== 1 ? "S" : ""}
         </p>
-
         <button
           onClick={handleClearGallery}
           disabled={clearing || loading}
-          className="mt-3 w-full bg-red-500/80 hover:bg-red-600 text-white px-3 py-2 rounded text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          style={{
+            width:"100%", background:"#111", color:"#fff",
+            border:"none", borderRadius:1, padding:"9px 12px",
+            fontSize:10, letterSpacing:"0.15em",
+            cursor: clearing || loading ? "not-allowed" : "pointer",
+            opacity: clearing || loading ? 0.4 : 1, transition:"opacity 0.2s",
+          }}
         >
-          {clearing ? "Clearing..." : "🗑️ Clear Gallery"}
+          {clearing ? "CLEARING..." : "CLEAR COLLECTION"}
         </button>
       </div>
     </div>

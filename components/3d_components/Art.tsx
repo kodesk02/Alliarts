@@ -15,41 +15,41 @@ export default function Art({ position, rotation = [0, 0, 0], image }: ArtProps)
   const groupRef = useRef<THREE.Group>(null!);
   const { camera } = useThree();
   const texture = useLoader(TextureLoader, image);
-
   const targetScale = useRef(1);
 
   useFrame(() => {
     if (!groupRef.current) return;
-
-    const artPos = groupRef.current.position;
-
-    // --------- 1️⃣ Distance from camera ---------
-    const distance = artPos.distanceTo(camera.position);
-
-    // --------- 2️⃣ Scale based on distance ---------
-    // If closer than 5 units, scale up to 1.1, else back to 1
-    targetScale.current = distance < 5 ? 1.1 : 1.0;
-
-    // Smooth interpolation (LERP)
-    const currentScale = groupRef.current.scale.x;
-    groupRef.current.scale.x += (targetScale.current - currentScale) * 0.05;
-    groupRef.current.scale.y += (targetScale.current - currentScale) * 0.05;
-    groupRef.current.scale.z += (targetScale.current - currentScale) * 0.05;
-
+    const distance = groupRef.current.position.distanceTo(camera.position);
+    targetScale.current = distance < 5 ? 1.03 : 1.0;
+    const s = groupRef.current.scale.x;
+    const ns = s + (targetScale.current - s) * 0.05;
+    groupRef.current.scale.set(ns, ns, ns);
   });
 
   return (
     <group ref={groupRef} position={position} rotation={rotation}>
-      {/* Frame */}
-      <mesh position={[-0.02, 0, 0]}>
-        <planeGeometry args={[2.1, 1.6]} />
-        <meshStandardMaterial color="#000" side={DoubleSide} />
+      {/* Shadow/depth backing */}
+      <mesh position={[0, 0, -0.04]}>
+        <planeGeometry args={[3.1, 2.5]} />
+        <meshStandardMaterial color="#c0c0c0" side={DoubleSide} transparent opacity={0.3} />
+      </mesh>
+
+      {/* White frame */}
+      <mesh position={[0, 0, -0.02]}>
+        <planeGeometry args={[4.55, 4.35]} />
+        <meshStandardMaterial color="#000000" side={DoubleSide} roughness={0.5} />
+      </mesh>
+
+      {/* Off-white mat */}
+      <mesh position={[0, 0, -0.01]}>
+        <planeGeometry args={[3.05, 4.35]} />
+        <meshStandardMaterial color="#000000" side={DoubleSide} roughness={0.6} />
       </mesh>
 
       {/* Artwork */}
-      <mesh position={[0, 0, 0]}>
-        <planeGeometry args={[2, 1.5]} />
-        <meshStandardMaterial map={texture} side={DoubleSide} />
+      <mesh>
+        <planeGeometry args={[4.35, 4.05]} />
+        <meshStandardMaterial map={texture} side={DoubleSide} roughness={0.4} />
       </mesh>
     </group>
   );
